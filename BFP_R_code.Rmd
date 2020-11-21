@@ -32,42 +32,45 @@ VIX_9d_CBOE = fread("vix9ddailyprices.csv")
 VIX_30d_CBOE = fread("vixcurrent.csv")
 VIX_3m_CBOE = fread("vix3mdailyprices.csv")
 VIX_6m_CBOE = fread("vix6mdailyprices.csv")
-VIXY = fread("^VIX.csv") # from Yahoo
 
 realized = fread("oxfordmanrealizedvolatilityindices 2.csv")
 
 SP_500 = SP_500[,c("Date", "Close", "Volume")]
 colnames(SP_500) = c("date", "close", "volume")
 SP_500$date = as.Date(SP_500$date)
+remove(SP_500)
 
 
 vix_9d = VIX_9d_CBOE[-c(1,2,3,4), c("V1", "V5")]
 colnames(vix_9d) = c("date", "vix_9d") 
 vix_9d$date = as.Date(mdy(vix_9d$date))
 vix_9d$vix_9d = as.numeric(vix_9d$vix_9d)
-
+remove(VIX_9d_CBOE)
 
 vix_30d = VIX_30d_CBOE[-c(1,2), c("V1", "V5")]
 colnames(vix_30d) = c("date", "vix_30d") 
 vix_30d$date = as.Date(mdy(vix_30d$date))
 vix_30d$vix_30d = as.numeric(vix_30d$vix_30d)
-
+remove(VIX_30d_CBOE)
 
 vix_3m = VIX_3m_CBOE[-c(1,2,3), c("V1", "V5")]
 colnames(vix_3m) = c("date", "vix_3m") 
 vix_3m$date = as.Date(mdy(vix_3m$date))
 vix_3m$vix_3m = as.numeric(vix_3m$vix_3m)
+remove(VIX_3m_CBOE)
 
 vix_6m = VIX_6m_CBOE[-c(1,2,3), c("V1", "V5")]
 colnames(vix_6m) = c("date", "vix_6m") 
 vix_6m$date = as.Date(mdy(vix_6m$date))
 vix_6m$vix_6m = as.numeric(vix_6m$vix_6m)
+remove(VIX_6m_CBOE)
 
 
 temp = left_join(vix_9d, vix_30d, by = "date")
 temp = left_join(temp, vix_3m, by = "date")
 temp = left_join(temp, vix_6m, by = "date")
 vix_df = temp
+rm("vix_30d", "vix_3m", "vix_6m", "vix_9d", "temp")
 
 realized$date = as_datetime(realized$V1)
 realized = realized[,-c("V1")]
@@ -120,7 +123,7 @@ Delt(c(1,1.01,1.01^2))
 
 ``` 
 
-```{r #+# RV vs VIX build and visual inspection + CREATE rv_vix_subset}
+```{r *#+# RV vs VIX build and visual inspection }
 ##++## plot together with VIX
 ##++## why VIX has NA? # solved (daylight time and 23:00 which resulted in  "date-1")
 ##+## (i.e. no visible prediction power in VIX, just repeats RV5 dynamic)
@@ -144,7 +147,7 @@ ggplot(rv_vix_subset, aes(date)) +
 
 ```
 
-```{r #+# VIX returns added to rv_vix}
+```{r *#+# VIX returns added to rv_vix}
 ##+## plot rv vs vix_log_ret #found it USELESS
 ##+## double check that the dates of VIX and RV5 are really the same 
 ##+## (i.e. AGAIN no visible prediction power in VIX, just repeats RV5 dynamic)
@@ -168,7 +171,7 @@ ggplot(rv_vix_subset, aes(date)) +
 
 ```
 
-```{r #+# PREPARE rv dataframe for plotting}
+```{r *#+# PREPARE rv dataframe for plotting}
 ### plan
 ##++## find true S&P volatility caclulated 
 ##++## find true S&P volatility methodology
@@ -451,16 +454,14 @@ remove(subset)
 
 ```
 
-
-
 ```{r #...# realGarch prediction}
 ##---## find a metric to assess quality of prediction
-##---## find a R library to do realGARCH
+##+## find a R library to do realGARCH
 ##---## build a loop
   # chose a time interval
   # build a model
-  # compare the model prediction with the truth (9d after the interval)
-
+  # compare the model prediction with the truth (9d after the end of the interval)
+##---## compare results with results by the R rugarch library##
 build_vix9_rv_subset = function(start_date, end_date) {
   rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
   rv_vix_subset = rv_vix[((rv_vix$date>=start_date) & (rv_vix$date<=end_date)),]
@@ -470,10 +471,13 @@ build_vix9_rv_subset = function(start_date, end_date) {
 }
 
 start_date = "2018-01-22"
-T_out <- 5
-for (i in (0:0)) {}
-  subset = build_vix9_rv_subset(start_date, "2018-03-22")
+subset_length = 7 # in months
+step = 3 # in months
+n_steps = 2 # 
+T_out <- 5 # forecast depth, days
 
+for (i in (0:n_steps)) {}
+  subset = build_vix9_rv_subset(start_date, as.Date(start_date) + months(subset_length))
   T <- length(subset$vix_lin_ret)-1
   r <- rv_vix_subset$vix_lin_ret[-(c(1))]
   x <- rv_vix_subset$rv5[-(c(1))]

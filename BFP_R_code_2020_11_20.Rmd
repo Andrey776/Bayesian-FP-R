@@ -120,7 +120,7 @@ Delt(c(1,1.01,1.01^2))
 
 ``` 
 
-```{r *#+# RV vs VIX build and visual inspection }
+```{r #+# RV vs VIX build and visual inspection + CREATE rv_vix_subset}
 ##++## plot together with VIX
 ##++## why VIX has NA? # solved (daylight time and 23:00 which resulted in  "date-1")
 ##+## (i.e. no visible prediction power in VIX, just repeats RV5 dynamic)
@@ -144,7 +144,7 @@ ggplot(rv_vix_subset, aes(date)) +
 
 ```
 
-```{r *#+# VIX returns added to rv_vix}
+```{r #+# VIX returns added to rv_vix}
 ##+## plot rv vs vix_log_ret #found it USELESS
 ##+## double check that the dates of VIX and RV5 are really the same 
 ##+## (i.e. AGAIN no visible prediction power in VIX, just repeats RV5 dynamic)
@@ -451,14 +451,16 @@ remove(subset)
 
 ```
 
+
+
 ```{r #...# realGarch prediction}
 ##---## find a metric to assess quality of prediction
-##+## find a R library to do realGARCH
+##---## find a R library to do realGARCH
 ##---## build a loop
   # chose a time interval
   # build a model
-  # compare the model prediction with the truth (9d after the end of the interval)
-##---## compare results with results by the R rugarch library##
+  # compare the model prediction with the truth (9d after the interval)
+
 build_vix9_rv_subset = function(start_date, end_date) {
   rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
   rv_vix_subset = rv_vix[((rv_vix$date>=start_date) & (rv_vix$date<=end_date)),]
