@@ -16,6 +16,8 @@ library(ggplot2)
 library(hrbrthemes)
 library(shinystan)
 library(corrplot)
+devtools::install_github("stan-dev/loo")
+
 
 #library(reshape2)
 #launch_shinystan_demo()
@@ -130,10 +132,10 @@ Delt(c(1,1.01,1.01^2))
 
 rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
 rv_vix_subset = rv_vix[((rv_vix$date>"2015-01-01") & (rv_vix$date<"2016-06-30")),]
-coeff = max(rv_vix_subset$vix, na.rm = TRUE)/ max(rv_vix_subset$rv5, na.rm = TRUE)
+coeff = max(rv_vix_subset$vix_9d, na.rm = TRUE)/ max(rv_vix_subset$rv5, na.rm = TRUE)
 ggplot(rv_vix_subset, aes(date)) + 
   geom_line(aes(y = rv5, colour = "rv5")) + 
-  geom_line(aes(y = vix/ coeff, colour = "vix")) +
+  geom_line(aes(y = vix_9d/ coeff, colour = "vix")) +
   scale_y_continuous(
     # Features of the first axis
     name = "Realized variance (5-min)",
@@ -151,8 +153,8 @@ ggplot(rv_vix_subset, aes(date)) +
 ##+## plot rv vs vix_log_ret #found it USELESS
 ##+## double check that the dates of VIX and RV5 are really the same 
 ##+## (i.e. AGAIN no visible prediction power in VIX, just repeats RV5 dynamic)
-rv_vix_subset$vix_log_ret = log_ret(rv_vix_subset$vix)
-rv_vix_subset$vix_lin_ret = lin_ret(rv_vix_subset$vix)
+rv_vix_subset$vix_log_ret = log_ret(rv_vix_subset$vix_9d)
+rv_vix_subset$vix_lin_ret = lin_ret(rv_vix_subset$vix_9d)
 
 coeff = 2*max(rv_vix_subset$vix_lin_ret, na.rm = TRUE)/ max(rv_vix_subset$rv5, na.rm = TRUE)
 ggplot(rv_vix_subset, aes(date)) + 
@@ -256,14 +258,14 @@ summary(r_fit)$summary[,c("mean", "50%","2.5%", "97.5%")][c("mu", "sigma[33]","r
 ```{r #...# STAN model realGARCH(1,1)}
 #### add mu?
 #### try different distribution (0,1) for x instead of N(0,1)
-#### set up restrictions for the parameters (!!! see the paper)
-#### set up priors (LNG paper aithors do use them)
-##+++## increase tree depth
-#### clear this chunk of any model implementation 
+##...## set up restrictions for the parameters (!!! see the paper)
+##...## set up priors (LNG paper aithors do use them)
+##+## increase tree depth
+##+++## clear this chunk of any model implementation 
 #### (making a typical separate chunks for any use of model; incl. forecasting model)
-T <- length(rv_vix_subset$vix_lin_ret)-1
-r <- rv_vix_subset$vix_lin_ret[-(c(1))]
-x <- rv_vix_subset$rv5[-(c(1))]
+T <- length(subset$vix_lin_ret)-1
+r <- subset$vix_lin_ret[-(c(1))]
+x <- subset$rv5[-(c(1))]
 sigma_r_1 <- 0.1 # it is sqrt(h[1])
 T_out <- 5
 
@@ -305,6 +307,7 @@ transformed parameters {
 }
 
 model { 
+  
   r ~ normal(0, sqrt(h));
   x ~ normal(mu_x, sigma_u);
 }
@@ -335,14 +338,14 @@ r_fit = stan(model_code = real_garch, data = stan_dat_real_garch, iter = 3*10^3,
 summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma", 
                                                       "xi", "phi", "tau_1", 
                                                       "tau_2", "sigma_u",
-                                                      "h[10]", "h[20]", "h[100]", "h[200]",
+                                                      "h[10]", "h[20]", "h[100]",
                                                       "r_out[1]", "r_out[4]"),]
 
-save(r_fit, file = "real_garch_test_3.rda", compress = "xz")
-
-sso <- launch_shinystan(r_fit)
-t = extract(r_fit)
-plot(t$r_out[1])
+### some useful commands
+#save(r_fit, file = "real_garch_test_3.rda", compress = "xz")
+#sso <- launch_shinystan(r_fit)
+#t = extract(r_fit)
+#plot(t$r_out[1])
 ```
 
 ```{r #+-+# SP_500/ VIX/ rv exploratory data analysis}
@@ -455,11 +458,12 @@ remove(subset)
 ```
 
 ```{r #...# realGarch prediction}
-##---## find a metric to assess quality of prediction
+##+## find a metric to assess quality of prediction
+##-## code the metric to assess quality of prediction
 ##+## find a R library to do realGARCH
 ##---## build a loop
-  # chose a time interval
-  # build a model
+  #+# chose a time interval
+  #+# build a model
   # compare the model prediction with the truth (9d after the end of the interval)
 ##---## compare results with results by the R rugarch library##
 build_vix9_rv_subset = function(start_date, end_date) {
@@ -470,25 +474,55 @@ build_vix9_rv_subset = function(start_date, end_date) {
   return(rv_vix_subset)
 }
 
-start_date = "2018-01-22"
-subset_length = 7 # in months
-step = 3 # in months
-n_steps = 2 # 
-T_out <- 5 # forecast depth, days
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
+start_date = "2017-01-22"
+subset_size = 5 # in months
+step_size = 3 # in months
+n_steps = 1 # 
+T_out <- 7 # forecast depth, days
+sigma_r_1 <- 0.1 # it is sqrt(h[1])
 
-for (i in (0:n_steps)) {}
-  subset = build_vix9_rv_subset(start_date, as.Date(start_date) + months(subset_length))
+for (i in (1:n_steps)) {}
+  start_date = as.Date(start_date) + months((i-1) * step_size)
+  end_date = as.Date(start_date) + months(subset_size) 
+  subset = build_vix9_rv_subset(start_date, end_date)
   T <- length(subset$vix_lin_ret)-1
-  r <- rv_vix_subset$vix_lin_ret[-(c(1))]
-  x <- rv_vix_subset$rv5[-(c(1))]
-  sigma_r_1 <- 0.1 # it is sqrt(h[1])
+  r <- subset$vix_lin_ret[-(c(1))]
+  x <- subset$rv5[-(c(1))]
+  file_name = paste("RG", as.character(Sys.Date()),
+                    "for", as.character(start_date), as.character(end_date), ".rda", sep=" ")
+  
   stan_dat_real_garch = list(T = T, x = x, r = r, h_1 = (sigma_r_1)^2, T_out = T_out)
+  
+  r_fit = stan(model_code = real_garch, data = stan_dat_real_garch, 
+               iter = 3*10^3, chains = 3,
+               control = list(max_treedepth = 16))
+  
+  setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
 
-```
+  save(r_fit, file = file_name, compress = "xz")
+
+  
+  summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma", 
+                                                      "xi", "phi", "tau_1", 
+                                                      "tau_2", "sigma_u",
+                                                      "h[10]", "h[20]", "h[100]",
+                                                      "r_out[1]", "r_out[4]"),]
+  
+  # Check the ACF of draws
+stan_ac(r_fit, c("omega", "beta", "gamma"))
 
 
-```{r ##to do## run realGARCH for SPX_return~SPX_rv}
-#### 
+# WAIC and LOOC
+log_lik = extract_log_lik(r_fit, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+  
+  sso <- launch_shinystan(r_fit)
+
+
 ```
 
 ```{r ##to_do## parameters' stability check}
@@ -499,6 +533,10 @@ future work
 ```{r other indexes return}
 # to directly model SP500 return ~ rv, volume (not VIX as in the project)
 # also try to model other indexes return
+```
+
+```{r ##to do## run realGARCH for SPX_return~SPX_rv}
+#### 
 ```
 
 ```{r ##to_do## similar research for other indexes}
