@@ -17,6 +17,7 @@ library(hrbrthemes)
 library(shinystan)
 library(corrplot)
 devtools::install_github("stan-dev/loo")
+library(loo)
 
 
 #library(reshape2)
@@ -40,7 +41,7 @@ realized = fread("oxfordmanrealizedvolatilityindices 2.csv")
 SP_500 = SP_500[,c("Date", "Close", "Volume")]
 colnames(SP_500) = c("date", "close", "volume")
 SP_500$date = as.Date(SP_500$date)
-remove(SP_500)
+#remove(SP_500)
 
 
 vix_9d = VIX_9d_CBOE[-c(1,2,3,4), c("V1", "V5")]
@@ -197,14 +198,123 @@ remove(rv_subset)
 remove(rv_subset_long)
 ```
 
+```{r #-# STAN model AR(1)}
+##---## shiny stan - what Yrep and PPcheck do??
+
+T <- length(subset$vix_lin_ret)-1
+r <- subset$vix_lin_ret[-(c(1))]
+#sigma1 <- 0.1
+T_out <- 9
+v = var(r)
+
+stan_dat_AR1 = list(T=T, y = r, T_out = T_out, v = v)
+
+stan_mod_AR1 = "
+data {
+  int T;
+  vector[T] y;
+  int T_out;
+  real<lower=0> v; // sample variance of y
+
+}
+parameters {
+  real alpha;
+  real beta;
+  //real<lower=-1,upper=1> beta;
+  real<lower=0> sigma;
+}
+transformed parameters {
+  vector[T] mu;
+  for (i in 2:T) {
+    mu[i] = alpha + beta * y[i-1];
+  }
+  mu[1] = mu[2];
+}
+model {
+  sigma ~ inv_gamma(.1, .1);
+  alpha ~ normal(0, 10);
+  beta ~ normal(0, 10);
+  for (n in 2:T)
+    y[n] ~ normal(mu[n], sigma);
+}
+generated quantities {
+  vector[T_out] r_out;
+  vector[T] log_lik;
+  vector[T] lik;
+  real Rbsq;              // goodness-of-fit
+  Rbsq = 1 - square(sigma)/v;
+  //err
+  r_out[1] = normal_rng(alpha + beta * y[T], sigma);
+  
+  for (i in 2:T_out) {
+    r_out[i] = normal_rng(alpha + beta * y[i-1], sigma);
+  }
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(y[i] | mu[i], sigma);
+    lik[i] = exp(log_lik[i]);
+  }
+
+}
+"
+r_fit_AR1 = stan(model_code = stan_mod_AR1, 
+                 data = stan_dat_AR1, 
+                 iter = 3 * 10^3, chains = 3)
+
+#summary(r_fit_AR1)$summary[,"Rhat"]
+summary(r_fit_AR1)$summary[,c("mean", "2.5%", "97.5%")][c("alpha", "beta", "r_out[1]", "r_out[5]", "r_out[9]"),]
+log_lik = extract_log_lik(r_fit_AR1, merge_chains = FALSE)
+r_eff = exp(relative_eff(log_lik))
+
+waic(log_lik)
+loo(log_lik, r_eff = r_eff)
+#alpha0=extract(y_fit, pars="alpha0")[[1]]
+#sigma_out_2 = extract(y_fit, pars="sigma_out[2]")[[1]]
+#str(sigma_out_2)
+#summary(sigma_out_2)
+#plot(density(sigma_out_2))
+#sso <- launch_shinystan(r_fit_AR1)
+temp = "alpha"
+Rbsq=extract(r_fit_AR1, pars="Rbsq")[[1]]
+plot(density(Rbsq))
+
+### some useful commands
+#save(r_fit, file = "real_garch_test_3.rda", compress = "xz")
+sso <- launch_shinystan(r_fit_AR1)
+#t = extract(r_fit)
+#plot(t$r_out[1])
+```
+
+```{r quality of fit}
+quality_of_fit = function(fit, T_out, end_date) {
+  for (i in 1:T_out) {
+    temp_name = gsub(" ", "", paste("r_out[", as.character(i),"]", ""))
+    r_out=extract(fit, pars=temp_name)[[1]]
+    print(mean(r_out))
+  }
+}
+
+quality_of_fit(fit = r_fit_AR1, T_out=3, end_date = end_date)
+```
+
+
+```{r STAN model AR(K)}
+
+```
+
+```{r STAN model ARCH(K)}
+
+```
+
 ```{r #...# STAN model GARCH(1,1)}
 ##++## analyze correlation RV and VIX for the same date #they almost repeat each other
-##-+-## analyze correlation RV and VIX for the 30 days SHIFTED vix # no need imho, see the bullet above
 ##++## choose what to model (RV point or f(RV[interval])?) # return
 ##++## read papers about prediction of rv (Shepard and Shepard? etc)
 #### add Rbsq
-T <- length(rv_vix_subset$vix_lin_ret)-1
-r <- rv_vix_subset$vix_lin_ret[-(c(1))]
+#### add log lik
+#### add err
+
+T <- length(subset$vix_lin_ret)-1
+r <- subset$vix_lin_ret[-(c(1))]
 sigma1 <- 0.1
 T_out <- 10
 
@@ -251,11 +361,11 @@ summary(r_fit)$summary[,c("mean", "50%","2.5%", "97.5%")][c("mu", "sigma[33]","r
 #str(sigma_out_2)
 #summary(sigma_out_2)
 #plot(density(sigma_out_2))
-#sso <- launch_shinystan(r_fit)
+sso <- launch_shinystan(r_fit)
 
 ```
 
-```{r #...# STAN model realGARCH(1,1)}
+```{r #...# STAN model lin realGARCH(1,1)}
 #### add mu?
 #### try different distribution (0,1) for x instead of N(0,1)
 ##...## set up restrictions for the parameters (!!! see the paper)
@@ -348,7 +458,7 @@ summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma",
 #plot(t$r_out[1])
 ```
 
-```{r #+-+# SP_500/ VIX/ rv exploratory data analysis}
+```{r #+-+# SP_500/ VIX/ rv joint DF creation}
 ##+++## take vix(9/30/180/..), rv5_forward_lag(0/5/9/30...).. SPX_volat(9/30/...) as of vix_date+9/30/180
 ##---## add autocorrelation plot
 
@@ -407,8 +517,6 @@ sum(is.na(SP_500_corr_df))
 
 SP_500_corr_df = SP_500_corr_df[SP_500_corr_df$date > "2012-01-01", ]
 
-M<-cor(SP_500_corr_df[,-c(1)])
-corrplot(M)
 
 ### take-aways
 # vix does not forecast a point estimate of RV
@@ -422,6 +530,12 @@ corrplot(M)
 #temp1 = 0
 #for (i in (1:length(temp))){temp1 = temp1 + (temp[i]-mean(temp))^2}
 #sqrt(temp1/(length(temp)-1))
+```
+
+```{r SP_500/ VIX/ rv correlation}
+M<-cor(SP_500_corr_df[,-c(1)])
+corrplot(M)
+
 ```
 
 ```{r #+# plots sd_9/30d_lead9/30d ~ vix9/30}
@@ -457,7 +571,7 @@ remove(subset)
 
 ```
 
-```{r #...# realGarch prediction}
+```{r #...# create subset and realGarch prediction}
 ##+## find a metric to assess quality of prediction
 ##-## code the metric to assess quality of prediction
 ##+## find a R library to do realGARCH
