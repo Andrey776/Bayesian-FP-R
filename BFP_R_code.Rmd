@@ -100,7 +100,7 @@ rv = realized[realized$Symbol==".SPX",]
 http://www.cboe.com/products/vix-index-volatility/vix-options-and-futures/vix-index/vix-historical-data
 https://www.cboe.com/index/dashboard/VIX6M#vix6m-overview
 
-```{r #+#FUNC return functions }
+```{r #+#FUNCTION return }
 ##+++## add a normal return finction
 
 ## lin return ##
@@ -200,14 +200,14 @@ remove(rv_subset_long)
 
 ```{r #-# STAN model AR(1)}
 ##---## shiny stan - what Yrep and PPcheck do??
+# 
+# T <- length(subset$vix_lin_ret)-1
+# r <- subset$vix_lin_ret[-(c(1))]
+# #sigma1 <- 0.1
+# T_out <- 9
+# v = var(r)
 
-T <- length(subset$vix_lin_ret)-1
-r <- subset$vix_lin_ret[-(c(1))]
-#sigma1 <- 0.1
-T_out <- 9
-v = var(r)
-
-stan_dat_AR1 = list(T=T, y = r, T_out = T_out, v = v)
+#stan_dat_AR1 = list(T=T, y = r, T_out = T_out, v = v)
 
 stan_mod_AR1 = "
 data {
@@ -256,46 +256,33 @@ generated quantities {
 
 }
 "
-r_fit_AR1 = stan(model_code = stan_mod_AR1, 
-                 data = stan_dat_AR1, 
-                 iter = 3 * 10^3, chains = 3)
+#r_fit_AR1 = stan(model_code = stan_mod_AR1, 
+#                 data = stan_dat_AR1, 
+#                 iter = 3 * 10^3, chains = 3)
 
 #summary(r_fit_AR1)$summary[,"Rhat"]
-summary(r_fit_AR1)$summary[,c("mean", "2.5%", "97.5%")][c("alpha", "beta", "r_out[1]", "r_out[5]", "r_out[9]"),]
-log_lik = extract_log_lik(r_fit_AR1, merge_chains = FALSE)
-r_eff = exp(relative_eff(log_lik))
+#summary(r_fit_AR1)$summary[,c("mean", "2.5%", "97.5%")][c("alpha", "beta", "r_out[1]", "r_out[5]", "r_out[9]"),]
+#log_lik = extract_log_lik(r_fit_AR1, merge_chains = FALSE)
+#r_eff = exp(relative_eff(log_lik))
 
-waic(log_lik)
-loo(log_lik, r_eff = r_eff)
+#waic(log_lik)
+#loo(log_lik, r_eff = r_eff)
 #alpha0=extract(y_fit, pars="alpha0")[[1]]
 #sigma_out_2 = extract(y_fit, pars="sigma_out[2]")[[1]]
 #str(sigma_out_2)
 #summary(sigma_out_2)
 #plot(density(sigma_out_2))
 #sso <- launch_shinystan(r_fit_AR1)
-temp = "alpha"
-Rbsq=extract(r_fit_AR1, pars="Rbsq")[[1]]
-plot(density(Rbsq))
+#temp = "alpha"
+#Rbsq=extract(r_fit_AR1, pars="Rbsq")[[1]]
+#plot(density(Rbsq))
 
 ### some useful commands
 #save(r_fit, file = "real_garch_test_3.rda", compress = "xz")
-sso <- launch_shinystan(r_fit_AR1)
+#sso <- launch_shinystan(r_fit_AR1)
 #t = extract(r_fit)
 #plot(t$r_out[1])
 ```
-
-```{r quality of fit}
-quality_of_fit = function(fit, T_out, end_date) {
-  for (i in 1:T_out) {
-    temp_name = gsub(" ", "", paste("r_out[", as.character(i),"]", ""))
-    r_out=extract(fit, pars=temp_name)[[1]]
-    print(mean(r_out))
-  }
-}
-
-quality_of_fit(fit = r_fit_AR1, T_out=3, end_date = end_date)
-```
-
 
 ```{r STAN model AR(K)}
 
@@ -361,7 +348,7 @@ summary(r_fit)$summary[,c("mean", "50%","2.5%", "97.5%")][c("mu", "sigma[33]","r
 #str(sigma_out_2)
 #summary(sigma_out_2)
 #plot(density(sigma_out_2))
-sso <- launch_shinystan(r_fit)
+#sso <- launch_shinystan(r_fit)
 
 ```
 
@@ -571,7 +558,56 @@ remove(subset)
 
 ```
 
-```{r #...# create subset and realGarch prediction}
+```{r FUNCTION build_vix9_rv_subset}
+build_vix9_rv_subset = function(start_date, end_date) { ### end_date including 1 extra month for T_out ###
+  rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
+  rv_vix_subset = rv_vix[((rv_vix$date>=(as.Date(start_date) - days(1))) & (rv_vix$date<=end_date)),]
+  rv_vix_subset$vix_log_ret = log_ret(rv_vix_subset$vix_9d)
+  rv_vix_subset$vix_lin_ret = lin_ret(rv_vix_subset$vix_9d)
+  return(rv_vix_subset[-c(1),])
+}
+```
+
+```{r FUNCTION quality_of_fit}
+quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
+  qf_df = data.frame(matrix(vector(), T_out, 6, 
+                            dimnames = list(c(), 
+                                            c("date" ,"r_out", "r_truth", "price_r_out", 
+                                                   "price_r_truth", "price_truth"))), 
+                     stringsAsFactors=F)
+  for (i in 1:T_out) {
+    temp_name = gsub(" ", "", paste("r_out[", as.character(i),"]", ""))
+    r_out=extract(fit, pars=temp_name)[[1]]
+    qf_df$r_out[i] = mean(r_out)
+  
+  }
+  d = max(which(subset_long$date <= end_date))
+  qf_df$date = subset_long$date[((d+1):(d+T_out))]
+  qf_df$r_truth = subset_long$vix_lin_ret[((d+1):(d+T_out))]
+  qf_df$price_truth = subset_long$vix_9d[((d+1):(d+T_out))]
+  
+  # WAIC and LOOC
+  log_lik = extract_log_lik(fit, merge_chains = FALSE)
+  r_eff = exp(relative_eff(log_lik))
+  
+  qf = list(qf_df, summary(fit), waic(log_lik), loo(log_lik, r_eff = r_eff))
+  (names(qf) = c("returns", "summary", "waic", "looic"))
+  return(qf)
+
+}
+
+# Check the ACF of draws
+#stan_ac(r_fit, c("omega", "beta", "gamma"))
+
+#summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma", 
+#                                                      "xi", "phi", "tau_1", 
+#                                                      "tau_2", "sigma_u",
+#                                                      "h[10]", "h[20]", "h[100]",
+#                                                      "r_out[1]", "r_out[4]"),]  
+
+```
+
+```{r #...# FUNCTION forecast_vix}
 ##+## find a metric to assess quality of prediction
 ##-## code the metric to assess quality of prediction
 ##+## find a R library to do realGARCH
@@ -580,62 +616,58 @@ remove(subset)
   #+# build a model
   # compare the model prediction with the truth (9d after the end of the interval)
 ##---## compare results with results by the R rugarch library##
-build_vix9_rv_subset = function(start_date, end_date) {
-  rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
-  rv_vix_subset = rv_vix[((rv_vix$date>=start_date) & (rv_vix$date<=end_date)),]
-  rv_vix_subset$vix_log_ret = log_ret(rv_vix_subset$vix_9d)
-  rv_vix_subset$vix_lin_ret = lin_ret(rv_vix_subset$vix_9d)
-  return(rv_vix_subset)
-}
 
-setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
+forecast_vix = function (model_code, start_date, subset_duration, 
+                         step_size, n_steps, T_out, 
+                         sigma_1, iter, chains) {
+  qf_list <- list()
+  for (i in (1:n_steps)) {
+    t_0 = as.Date(start_date) + months((i-1) * step_size)
+    t_1 = as.Date(t_0) + months(subset_duration + 1) #interim end_date, for subset_long
+    subset_long = build_vix9_rv_subset(t_0, t_1)
+    t_1 = as.Date(t_0) + months(subset_duration) #stored end_date, for subset
+    subset = build_vix9_rv_subset(t_0, t_1)
+
+    T <- length(subset$vix_lin_ret)#-1
+    r <- subset$vix_lin_ret#[-(c(1))]
+    rv <- subset$rv5#[-(c(1))]
+    v = var(r)
+    file_name = paste(model_name, as.character(Sys.Date()), 
+                      "for", as.character(t_0), as.character(t_1), ".rda", sep=" ")
+    
+    stan_dat = list(T = T, rv = rv, y = r, sigma_1 = sigma_1, T_out = T_out, v = v)
+    r_fit = stan(model_code = model_code, data = stan_dat, 
+                 iter = iter, chains = chains,
+                 control = list(max_treedepth = 10))
+    
+    setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
+    #save(r_fit, file = file_name, compress = "xz")
+    
+    qf = quality_of_fit(fit = r_fit, T_out = T_out, end_date = t_1, 
+                        subset = subset, subset_long = subset_long)
+    qf_list[[i]] <- qf
+  }
+  return(qf_list)
+}  
+
+```
+
+```{r chain of forecasts }
+model_code = stan_mod_AR1
+model_name = "AR1"
 start_date = "2017-01-22"
-subset_size = 5 # in months
+subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 3 # in months
-n_steps = 1 # 
-T_out <- 7 # forecast depth, days
-sigma_r_1 <- 0.1 # it is sqrt(h[1])
+n_steps = 2 # 
+T_out <- 9 # forecast depth, days
 
-for (i in (1:n_steps)) {}
-  start_date = as.Date(start_date) + months((i-1) * step_size)
-  end_date = as.Date(start_date) + months(subset_size) 
-  subset = build_vix9_rv_subset(start_date, end_date)
-  T <- length(subset$vix_lin_ret)-1
-  r <- subset$vix_lin_ret[-(c(1))]
-  x <- subset$rv5[-(c(1))]
-  file_name = paste("RG", as.character(Sys.Date()),
-                    "for", as.character(start_date), as.character(end_date), ".rda", sep=" ")
-  
-  stan_dat_real_garch = list(T = T, x = x, r = r, h_1 = (sigma_r_1)^2, T_out = T_out)
-  
-  r_fit = stan(model_code = real_garch, data = stan_dat_real_garch, 
-               iter = 3*10^3, chains = 3,
-               control = list(max_treedepth = 16))
-  
-  setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
-
-  save(r_fit, file = file_name, compress = "xz")
-
-  
-  summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma", 
-                                                      "xi", "phi", "tau_1", 
-                                                      "tau_2", "sigma_u",
-                                                      "h[10]", "h[20]", "h[100]",
-                                                      "r_out[1]", "r_out[4]"),]
-  
-  # Check the ACF of draws
-stan_ac(r_fit, c("omega", "beta", "gamma"))
-
-
-# WAIC and LOOC
-log_lik = extract_log_lik(r_fit, merge_chains = FALSE)
-r_eff = exp(relative_eff(log_lik))
-
-waic(log_lik)
-loo(log_lik, r_eff = r_eff)
-  
-  sso <- launch_shinystan(r_fit)
-
+iter = 3 * 10^3
+chains = 3
+sigma_1 <- 0.1 # it is sqrt(h[1])
+temp = forecast_vix(model_code = model_code, start_date = start_date, 
+                    subset_duration = subset_duration, 
+                    step_size = step_size,n_steps = n_steps, T_out = 9, 
+                    sigma_1 = 0.1, iter = iter, chains = chains) 
 
 ```
 
