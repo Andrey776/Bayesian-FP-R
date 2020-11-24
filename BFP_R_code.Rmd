@@ -199,13 +199,9 @@ remove(rv_subset_long)
 ```
 
 ```{r #-# STAN model AR(1)}
+## - ## pass mu[1] as data
+##---## play with different priors for GARCH(1,1)
 ##---## shiny stan - what Yrep and PPcheck do??
-# 
-# T <- length(subset$vix_lin_ret)-1
-# r <- subset$vix_lin_ret[-(c(1))]
-# #sigma1 <- 0.1
-# T_out <- 9
-# v = var(r)
 
 #stan_dat_AR1 = list(T=T, y = r, T_out = T_out, v = v)
 
@@ -240,10 +236,9 @@ model {
 generated quantities {
   vector[T_out] r_out;
   vector[T] log_lik;
-  vector[T] lik;
+  //vector[T] lik;
   real Rbsq;              // goodness-of-fit
   Rbsq = 1 - square(sigma)/v;
-  //err
   r_out[1] = normal_rng(alpha + beta * y[T], sigma);
   
   for (i in 2:T_out) {
@@ -251,7 +246,7 @@ generated quantities {
   }
   for (i in 1:T) {
     log_lik[i] = normal_lpdf(y[i] | mu[i], sigma);
-    lik[i] = exp(log_lik[i]);
+    //lik[i] = exp(log_lik[i]);
   }
 
 }
@@ -277,12 +272,64 @@ generated quantities {
 #plot(t$r_out[1])
 ```
 
-```{r STAN model AR(K)}
+```{r STAN model ARCH(1)}
 
-```
+stan_mod_ARCH1 = "
+data {
+  int<lower=0> T;               // number of time points
+  vector[T] y;                  // return at time t
+  real sigma_1;                  // the first sigma
+  int T_out;                    // forecast depth, days
+}
+parameters {
+  real mu;                       // average return
+  real<lower=0> alpha0;          // noise intercept
+  real<lower=0,upper=1> alpha1;  // noise slope
+  
+}
+transformed parameters {
+  vector[T] sigma;
+  for (i in 2:T) {
+    sigma[i] = sqrt(alpha0 + alpha1 * pow(y[i-1] - mu,2));
+  }
+  sigma[1] = sigma[2];
+}
 
-```{r STAN model ARCH(K)}
+model {
+  mu ~ normal(0, 100);
+  alpha0 ~ normal(0, 100);
+  alpha1 ~ normal(0, 100);
+  for (i in 2:T)
+    y[i] ~ normal(mu, sigma[i]);
+}
 
+generated quantities {
+  vector[T_out] r_out;
+  vector[T_out] sigma_out;
+
+  vector[T] log_lik;
+  //vector[T] lik;
+  //real Rbsq;              // goodness-of-fit
+  //Rbsq = 1 - square(sigma)/v;
+  
+  sigma_out[1] = sqrt(alpha0 + alpha1 * pow(y[T] - mu,2));
+  r_out[1] = normal_rng(mu, sigma_out[1]);
+  for (i in 2:T_out) {
+    sigma_out[i] = sqrt(alpha0 + alpha1 * pow(r_out[i-1] - mu,2));
+    r_out[i] = normal_rng(mu, sigma_out[i]);
+  }
+  
+  //for (i in 1:T_out) {
+  //  r_out[i] = normal_rng(mu, sigma_out[i]);
+  //}
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
+    //lik[i] = exp(log_lik[i]);
+  }
+
+}
+
+"
 ```
 
 ```{r #...# STAN model GARCH(1,1)}
@@ -366,14 +413,13 @@ data {
   real<lower=0> x[T];
   real r[T];
   real<lower=0> h_1;
-  //real<lower=0> sigma_u;
   int<lower=0> T_out;
 }
 
 parameters {
   real<lower=0.05> omega;          
   real<lower=0.2,upper=1>  beta;  
-  real<lower=0.2, upper=0.7> gamma;   
+  real<lower=0.2, upper=1-beta> gamma;   
   real xi;
   real phi;
   real tau_1;
@@ -397,7 +443,6 @@ transformed parameters {
 }
 
 model { 
-  
   r ~ normal(0, sqrt(h));
   x ~ normal(mu_x, sigma_u);
 }
@@ -562,7 +607,7 @@ build_vix9_rv_subset = function(start_date, end_date) { ### end_date including 1
 ```
 
 ```{r FUNCTION quality_of_fit}
-quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
+quality_of_fit = function(fit, T_out, end_date, subset, subset_long, Rbsq_presence = FALSE) {
   qf_df = data.frame(matrix(vector(), T_out, 6, 
                             dimnames = list(c(), 
                                             c("date" ,"r_out", "r_truth", "price_r_out", 
@@ -601,8 +646,10 @@ quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
   # WAIC and LOOC and Rbsq
   log_lik = extract_log_lik(fit, merge_chains = FALSE)
   r_eff = exp(relative_eff(log_lik))
-  RBSQ=extract(fit, pars="Rbsq")[[1]]
-  Rbsq = mean(RBSQ)
+  if (Rbsq_presence == TRUE) {
+    RBSQ=extract(fit, pars="Rbsq")[[1]]
+    Rbsq = mean(RBSQ)
+  } else {Rbsq = NA}
   
   qf = list(qf_df, summary(fit), waic(log_lik), loo(log_lik, r_eff = r_eff), Rbsq,
             MAE_ret, MAPE_ret, MSE_ret, MAE_ind, MAPE_ind, MSE_ind) # add MSE
@@ -633,7 +680,7 @@ quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
 
 forecast_vix = function (model_code, start_date, subset_duration, 
                          step_size, n_steps, T_out, 
-                         sigma_1, iter, chains) {
+                         sigma_1, iter, chains, Rbsq_presence = Rbsq_presence) {
   qf_list <- list()
   for (i in (1:n_steps)) {
     t_0 = as.Date(start_date) + months((i-1) * step_size)
@@ -642,14 +689,14 @@ forecast_vix = function (model_code, start_date, subset_duration,
     t_1 = as.Date(t_0) + months(subset_duration) #stored end_date, for subset
     subset = build_vix9_rv_subset(t_0, t_1)
 
-    T <- length(subset$vix_lin_ret)#-1
-    r <- subset$vix_lin_ret#[-(c(1))]
-    rv <- subset$rv5#[-(c(1))]
+    T <- length(subset$vix_lin_ret)
+    r <- subset$vix_lin_ret
+    rv <- subset$rv5
     v = var(r)
     file_name = paste(model_name, as.character(Sys.Date()), 
                       "for", as.character(t_0), as.character(t_1), ".rda", sep=" ")
     
-    stan_dat = list(T = T, rv = rv, y = r, sigma_1 = sigma_1, T_out = T_out, v = v)
+    stan_dat = list(T = T, rv = rv, y = r, mu_1 = mu_1, sigma_1 = sigma_1, T_out = T_out, v = v)
     r_fit = stan(model_code = model_code, data = stan_dat, 
                  iter = iter, chains = chains,
                  control = list(max_treedepth = 10))
@@ -659,13 +706,13 @@ forecast_vix = function (model_code, start_date, subset_duration,
     saveRDS(r_fit, file = file_name, compress = "xz")
     
     qf = quality_of_fit(fit = r_fit, T_out = T_out, end_date = t_1, 
-                        subset = subset, subset_long = subset_long)
+                        subset = subset, subset_long = subset_long, Rbsq_presence = Rbsq_presence)
     qf_list[[i]] <- qf
     names(qf_list)[i] = as.character(t_1) #end of sample and start of the forecast
   }
   return(qf_list)
 }  
-#sso <- launch_shinystan(temp_1)
+#sso <- launch_shinystan(r_fit)
 
 ```
 
@@ -687,9 +734,9 @@ sigma_1 <- 0.1 # it is sqrt(h[1])
 f = forecast_vix(model_code = model_code, start_date = start_date, 
                     subset_duration = subset_duration, 
                     step_size = step_size,n_steps = n_steps, T_out = 9, 
-                    sigma_1 = 0.1, iter = iter, chains = chains) 
+                    sigma_1 = 0.1, iter = iter, chains = chains, Rbsq_presence = TRUE) 
 
-p = data.frame(matrix(vector(), n_steps + 2, 20, 
+p = data.frame(matrix(vector(), n_steps + 3, 20, 
                          dimnames = list(c(), 
                                          c("window_start", "window_end",
                                            "alpha", "alpha_2.5", "alpha_97.5",
@@ -711,10 +758,78 @@ for (i in 1:n_steps){
   p[i, c("Rbsq")] = f[[i]]$Rbsq
   p[i, c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")] = f[[i]][c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")]
 
+}
 
+p[n_steps + 1, "window_end"] = "MEAN"
+p[n_steps + 2, "window_end"] = "SE"
+p[n_steps + 3, "window_end"] = "SE, %"
 
+standard_error <- function(x, ...) sqrt(var(x, ...)/length(x))
+options(digits=3)
+for (i in 3:dim(p)[2]) {
+  p[(n_steps + 1), i] = mean(p[1:n_steps, i])
+  p[(n_steps + 2), i] = standard_error(p[1:n_steps, i])
+  if (i>=3) {p[(n_steps + 3), i] = round(100 * p[(n_steps + 2), i] / p[(n_steps + 1), i], digits = 2)}
+}
+
+```
+
+```{r chain of forecasts ARCH1}
+#### compare tables for different subset durations 
+
+model_code = stan_mod_ARCH1
+model_name = "ARCH1"
+start_date = "2017-01-22"
+subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
+step_size = 2 # in months
+n_steps = 2 # number of different time windows (to build different models)
+T_out <- 9 # forecast depth, days
+
+iter = 3 * 10^3
+chains = 3
+sigma_1 <- 0.1 
+mu_1 = 0
+
+f = forecast_vix(model_code = model_code, start_date = start_date, 
+                    subset_duration = subset_duration, 
+                    step_size = step_size,n_steps = n_steps, T_out = T_out, 
+                    sigma_1 = sigma_1, iter = iter, chains = chains, Rbsq_presence = FALSE) 
+p_col_namses = c("window_start", "window_end",
+                 "mu", "mu_2.5", "mu_97.5",
+                 "alpha0", "alpha0_2.5", "alpha0_97.5",
+                 "alpha1", "alpha1_2.5", "alpha1_97.5",
+                 "WAIC", "LOOIC", "Rbsq",
+                 "MAE_ret", "MAPE_ret", "MSE_ret",
+                 "MAE_ind", "MAPE_ind", "MSE_ind")
+p = data.frame(matrix(vector(), n_steps + 3, length(p_col_namses), 
+                         dimnames = list(c(),p_col_namses)),
+               stringsAsFactors=F)
+
+for (i in 1:n_steps){
+  p[i, "window_start"] = as.character(as.Date(names(f)[i]) - months(subset_duration))
+  p[i, "window_end"] = as.character(as.Date(names(f)[i]))
+  p[i, c("mu", "mu_2.5", "mu_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("mu"),]
+  p[i, c("alpha0", "alpha0_2.5", "alpha0_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha0"),]
+  p[i, c("alpha1", "alpha1_2.5", "alpha1_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha1"),]
+  p[i, c("WAIC")] = f[[i]]$waic$waic
+  p[i, c("LOOIC")] = f[[i]]$looic$looic
+  #p[i, c("Rbsq")] = f[[i]]$Rbsq
+  p[i, c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")] = f[[i]][c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")]
 
 }
+
+p[n_steps + 1, "window_end"] = "MEAN"
+p[n_steps + 2, "window_end"] = "SE"
+p[n_steps + 3, "window_end"] = "SE, %"
+
+standard_error <- function(x, ...) sqrt(var(x, ...)/length(x))
+options(digits=3)
+for (i in 3:dim(p)[2]) {
+  p[(n_steps + 1), i] = mean(p[1:n_steps, i])
+  p[(n_steps + 2), i] = standard_error(p[1:n_steps, i])
+  if (i>=3) {p[(n_steps + 3), i] = round(100 * p[(n_steps + 2), i] / p[(n_steps + 1), i], digits = 2)}
+}
+
 ```
 
 ```{r ##to_do## parameters' stability check}
