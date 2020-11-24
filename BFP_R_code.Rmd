@@ -262,18 +262,11 @@ generated quantities {
 
 #summary(r_fit_AR1)$summary[,"Rhat"]
 #summary(r_fit_AR1)$summary[,c("mean", "2.5%", "97.5%")][c("alpha", "beta", "r_out[1]", "r_out[5]", "r_out[9]"),]
-#log_lik = extract_log_lik(r_fit_AR1, merge_chains = FALSE)
-#r_eff = exp(relative_eff(log_lik))
 
-#waic(log_lik)
-#loo(log_lik, r_eff = r_eff)
-#alpha0=extract(y_fit, pars="alpha0")[[1]]
 #sigma_out_2 = extract(y_fit, pars="sigma_out[2]")[[1]]
-#str(sigma_out_2)
 #summary(sigma_out_2)
 #plot(density(sigma_out_2))
-#sso <- launch_shinystan(r_fit_AR1)
-#temp = "alpha"
+
 #Rbsq=extract(r_fit_AR1, pars="Rbsq")[[1]]
 #plot(density(Rbsq))
 
@@ -586,12 +579,35 @@ quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
   qf_df$r_truth = subset_long$vix_lin_ret[((d+1):(d+T_out))]
   qf_df$price_truth = subset_long$vix_9d[((d+1):(d+T_out))]
   
-  # WAIC and LOOC
+  qf_df$price_r_truth[1] = (1 + qf_df$r_truth[1]) * subset_long$vix_9d[d]
+  for (i in 2:T_out) {
+    qf_df$price_r_truth[i] = (1 + qf_df$r_truth[i]) * qf_df$price_r_truth[i-1]
+  }
+  
+  qf_df$price_r_out[1] = (1 + qf_df$r_out[1]) * subset_long$vix_9d[d]
+  for (i in 2:T_out) {
+    qf_df$price_r_out[i] = (1 + qf_df$r_out[i]) * qf_df$price_r_out[i-1]
+  }
+  
+  MAE_ret = sum(abs(qf_df$r_truth - qf_df$r_out)) / T_out
+  MAPE_ret = sum((100*abs(qf_df$r_truth - qf_df$r_out)/ qf_df$r_truth)) / T_out
+  MSE_ret = sum((qf_df$r_truth - qf_df$r_out)^2) / T_out
+  
+  MAE_ind = sum(abs(qf_df$price_truth - qf_df$price_r_out)) / T_out
+  MAPE_ind = sum((100*abs(qf_df$price_truth - qf_df$price_r_out)/ qf_df$price_truth)) / T_out
+  MSE_ind = sum((qf_df$price_truth - qf_df$price_r_out)^2) / T_out
+  ### to add MSE for actual and forecasted prices
+  
+  # WAIC and LOOC and Rbsq
   log_lik = extract_log_lik(fit, merge_chains = FALSE)
   r_eff = exp(relative_eff(log_lik))
+  RBSQ=extract(fit, pars="Rbsq")[[1]]
+  Rbsq = mean(RBSQ)
   
-  qf = list(qf_df, summary(fit), waic(log_lik), loo(log_lik, r_eff = r_eff))
-  (names(qf) = c("returns", "summary", "waic", "looic"))
+  qf = list(qf_df, summary(fit), waic(log_lik), loo(log_lik, r_eff = r_eff), Rbsq,
+            MAE_ret, MAPE_ret, MSE_ret, MAE_ind, MAPE_ind, MSE_ind) # add MSE
+  (names(qf) = c("returns", "summary", "waic", "looic", "Rbsq",
+                 "MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")) #add MSE
   return(qf)
 
 }
@@ -607,15 +623,13 @@ quality_of_fit = function(fit, T_out, end_date, subset, subset_long) {
 
 ```
 
-```{r #...# FUNCTION forecast_vix}
+```{r FUNCTION forecast_vix}
 ##+## find a metric to assess quality of prediction
-##-## code the metric to assess quality of prediction
-##+## find a R library to do realGARCH
-##---## build a loop
+##+## code the metric to assess quality of prediction
+##+## build a loop
   #+# chose a time interval
   #+# build a model
-  # compare the model prediction with the truth (9d after the end of the interval)
-##---## compare results with results by the R rugarch library##
+  #+# compare the model prediction with the truth (9d after the end of the interval)
 
 forecast_vix = function (model_code, start_date, subset_duration, 
                          step_size, n_steps, T_out, 
@@ -641,38 +655,66 @@ forecast_vix = function (model_code, start_date, subset_duration,
                  control = list(max_treedepth = 10))
     
     setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
-    #save(r_fit, file = file_name, compress = "xz")
+    #temp_1 = readRDS("AR1 2020-11-23 for 2017-01-22 2017-07-22 .rda")
+    saveRDS(r_fit, file = file_name, compress = "xz")
     
     qf = quality_of_fit(fit = r_fit, T_out = T_out, end_date = t_1, 
                         subset = subset, subset_long = subset_long)
     qf_list[[i]] <- qf
+    names(qf_list)[i] = as.character(t_1) #end of sample and start of the forecast
   }
   return(qf_list)
 }  
+#sso <- launch_shinystan(temp_1)
 
 ```
 
-```{r chain of forecasts }
+```{r chain of forecasts AR1}
+#### compare tables for different subset durations 
+
 model_code = stan_mod_AR1
 model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
-step_size = 3 # in months
+step_size = 2 # in months
 n_steps = 2 # 
 T_out <- 9 # forecast depth, days
 
 iter = 3 * 10^3
 chains = 3
 sigma_1 <- 0.1 # it is sqrt(h[1])
-temp = forecast_vix(model_code = model_code, start_date = start_date, 
+
+f = forecast_vix(model_code = model_code, start_date = start_date, 
                     subset_duration = subset_duration, 
                     step_size = step_size,n_steps = n_steps, T_out = 9, 
                     sigma_1 = 0.1, iter = iter, chains = chains) 
 
+p = data.frame(matrix(vector(), n_steps + 2, 20, 
+                         dimnames = list(c(), 
+                                         c("window_start", "window_end",
+                                           "alpha", "alpha_2.5", "alpha_97.5",
+                                           "beta", "beta_2.5", "beta_97.5",
+                                           "sigma", "sigma_2.5", "sigma_97.5",
+                                           "WAIC", "LOIC", "Rbsq", 
+                                           "MAE_ret", "MAPE_ret", "MSE_ret", 
+                                           "MAE_ind", "MAPE_ind", "MSE_ind"))),
+                  stringsAsFactors=F)
+
+for (i in 1:n_steps){
+  p[i, "window_start"] = as.character(as.Date(names(f)[i]) - months(subset_duration))
+  p[i, "window_end"] = as.character(as.Date(names(f)[i]))
+  p[i, c("alpha", "alpha_2.5", "alpha_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha"),]
+  p[i, c("beta", "beta_2.5", "beta_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("beta"),]
+    p[i, c("sigma", "sigma_2.5", "sigma_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("sigma"),]
+
+
+}
 ```
 
 ```{r ##to_do## parameters' stability check}
 #### calculate parameters for 1...6 months time windows (neighboring, possibly overlapping)
+##---## compare results with results by the R rugarch library##
+
 ```
 
 future work
