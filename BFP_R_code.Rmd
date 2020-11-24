@@ -677,7 +677,7 @@ model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 2 # 
+n_steps = 4 # 
 T_out <- 9 # forecast depth, days
 
 iter = 3 * 10^3
@@ -695,7 +695,7 @@ p = data.frame(matrix(vector(), n_steps + 2, 20,
                                            "alpha", "alpha_2.5", "alpha_97.5",
                                            "beta", "beta_2.5", "beta_97.5",
                                            "sigma", "sigma_2.5", "sigma_97.5",
-                                           "WAIC", "LOIC", "Rbsq", 
+                                           "WAIC", "LOOIC", "Rbsq", 
                                            "MAE_ret", "MAPE_ret", "MSE_ret", 
                                            "MAE_ind", "MAPE_ind", "MSE_ind"))),
                   stringsAsFactors=F)
@@ -705,7 +705,13 @@ for (i in 1:n_steps){
   p[i, "window_end"] = as.character(as.Date(names(f)[i]))
   p[i, c("alpha", "alpha_2.5", "alpha_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha"),]
   p[i, c("beta", "beta_2.5", "beta_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("beta"),]
-    p[i, c("sigma", "sigma_2.5", "sigma_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("sigma"),]
+  p[i, c("sigma", "sigma_2.5", "sigma_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("sigma"),]
+  p[i, c("WAIC")] = f[[i]]$waic$waic
+  p[i, c("LOOIC")] = f[[i]]$looic$looic
+  p[i, c("Rbsq")] = f[[i]]$Rbsq
+  p[i, c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")] = f[[i]][c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")]
+
+
 
 
 }
