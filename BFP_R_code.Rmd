@@ -1,5 +1,5 @@
 ---
-title: "BFP_R_code"
+title: "B_FP_R_code"
 output: html_document
 ---
 ```{r setup, include=FALSE}
@@ -203,16 +203,16 @@ remove(rv_subset_long)
 ##---## play with different priors for GARCH(1,1)
 ##---## shiny stan - what Yrep and PPcheck do??
 
-#stan_dat_AR1 = list(T=T, y = r, T_out = T_out, v = v)
-
 stan_mod_AR1 = "
 data {
   int T;
   vector[T] y;
   int T_out;
-  real<lower=0> v; // sample variance of y
+  real<lower=0> v;  // sample variance of y
+  real mu_1;        // the first mu
 
 }
+
 parameters {
   real alpha;
   real beta;
@@ -224,7 +224,7 @@ transformed parameters {
   for (i in 2:T) {
     mu[i] = alpha + beta * y[i-1];
   }
-  mu[1] = mu[2];
+  mu[1] = mu_1;
 }
 model {
   sigma ~ inv_gamma(.1, .1);
@@ -292,7 +292,7 @@ transformed parameters {
   for (i in 2:T) {
     sigma[i] = sqrt(alpha0 + alpha1 * pow(y[i-1] - mu,2));
   }
-  sigma[1] = sigma[2];
+  sigma[1] = sigma_1;
 }
 
 model {
@@ -724,12 +724,13 @@ model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 4 # 
+n_steps = 9 # 
 T_out <- 9 # forecast depth, days
 
-iter = 3 * 10^3
-chains = 3
-sigma_1 <- 0.1 # it is sqrt(h[1])
+iter =10^4
+chains = 4
+sigma_1 <- 0.1 
+mu_1 = 0
 
 f = forecast_vix(model_code = model_code, start_date = start_date, 
                     subset_duration = subset_duration, 
@@ -782,18 +783,18 @@ model_name = "ARCH1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 2 # number of different time windows (to build different models)
+n_steps = 9 # number of different time windows (to build different models)
 T_out <- 9 # forecast depth, days
 
-iter = 3 * 10^3
-chains = 3
+iter = 10^4
+chains = 4
 sigma_1 <- 0.1 
 mu_1 = 0
 
 f = forecast_vix(model_code = model_code, start_date = start_date, 
                     subset_duration = subset_duration, 
                     step_size = step_size,n_steps = n_steps, T_out = T_out, 
-                    sigma_1 = sigma_1, iter = iter, chains = chains, Rbsq_presence = FALSE) 
+                    sigma_1 = sigma_1, mu_1 = mu_1, iter = iter, chains = chains, Rbsq_presence = FALSE) 
 p_col_namses = c("window_start", "window_end",
                  "mu", "mu_2.5", "mu_97.5",
                  "alpha0", "alpha0_2.5", "alpha0_97.5",
@@ -832,13 +833,72 @@ for (i in 3:dim(p)[2]) {
 
 ```
 
+```{r chain of forecasts GARCH11}
+#### compare tables for different subset durations 
+
+model_code = stan_mod_ARCH1
+model_name = "GARCH11"
+start_date = "2017-01-22"
+subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
+step_size = 2 # in months
+n_steps = 1 # number of different time windows (to build different models)
+T_out <- 9 # forecast depth, days
+
+iter = 10^4
+chains = 4
+sigma_1 <- 0.1 
+mu_1 = 0
+
+f = forecast_vix(model_code = model_code, start_date = start_date, 
+                    subset_duration = subset_duration, 
+                    step_size = step_size,n_steps = n_steps, T_out = T_out, 
+                    sigma_1 = sigma_1, mu_1 = mu_1, iter = iter, chains = chains, Rbsq_presence = FALSE) 
+p_col_namses = c("window_start", "window_end",
+                 "mu", "mu_2.5", "mu_97.5",
+                 "alpha0", "alpha0_2.5", "alpha0_97.5",
+                 "alpha1", "alpha1_2.5", "alpha1_97.5",
+                 "WAIC", "LOOIC", "Rbsq",
+                 "MAE_ret", "MAPE_ret", "MSE_ret",
+                 "MAE_ind", "MAPE_ind", "MSE_ind")
+p = data.frame(matrix(vector(), n_steps + 3, length(p_col_namses), 
+                         dimnames = list(c(),p_col_namses)),
+               stringsAsFactors=F)
+
+for (i in 1:n_steps){
+  p[i, "window_start"] = as.character(as.Date(names(f)[i]) - months(subset_duration))
+  p[i, "window_end"] = as.character(as.Date(names(f)[i]))
+  p[i, c("mu", "mu_2.5", "mu_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("mu"),]
+  p[i, c("alpha0", "alpha0_2.5", "alpha0_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha0"),]
+  p[i, c("alpha1", "alpha1_2.5", "alpha1_97.5")] = f[[i]]$summary$summary[,c("mean", "2.5%", "97.5%")][c("alpha1"),]
+  p[i, c("WAIC")] = f[[i]]$waic$waic
+  p[i, c("LOOIC")] = f[[i]]$looic$looic
+  #p[i, c("Rbsq")] = f[[i]]$Rbsq
+  p[i, c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")] = f[[i]][c("MAE_ret", "MAPE_ret", "MSE_ret", "MAE_ind", "MAPE_ind", "MSE_ind")]
+
+}
+
+p[n_steps + 1, "window_end"] = "MEAN"
+p[n_steps + 2, "window_end"] = "SE"
+p[n_steps + 3, "window_end"] = "SE, %"
+
+standard_error <- function(x, ...) sqrt(var(x, ...)/length(x))
+options(digits=3)
+for (i in 3:dim(p)[2]) {
+  p[(n_steps + 1), i] = mean(p[1:n_steps, i])
+  p[(n_steps + 2), i] = standard_error(p[1:n_steps, i])
+  if (i>=3) {p[(n_steps + 3), i] = round(100 * p[(n_steps + 2), i] / p[(n_steps + 1), i], digits = 2)}
+}
+
+```
+
+
+future work
 ```{r ##to_do## parameters' stability check}
 #### calculate parameters for 1...6 months time windows (neighboring, possibly overlapping)
 ##---## compare results with results by the R rugarch library##
 
 ```
 
-future work
 ```{r other indexes return}
 # to directly model SP500 return ~ rv, volume (not VIX as in the project)
 # also try to model other indexes return
