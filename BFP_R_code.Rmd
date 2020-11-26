@@ -154,7 +154,7 @@ ggplot(rv_vix_subset, aes(date)) +
 
 ```
 
-```{r #+# another plotting (t y axis)}
+```{r #+# another plotting (two y axis)}
 ##+## plot rv vs vix_log_ret #found it USELESS
 ##+## double check that the dates of VIX and RV5 are really the same 
 ##+## (i.e. AGAIN no visible prediction power in VIX, just repeats RV5 dynamic)
@@ -748,7 +748,7 @@ model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 1 # 
+n_steps = 2 # 
 T_out <- 9 # forecast depth, days
 
 iter =10^4
@@ -957,10 +957,10 @@ model_name = "RealGARCH11"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 2 # number of different time windows (to build different models)
+n_steps = 1 # number of different time windows (to build different models)
 T_out <- 9 # forecast depth, days
 
-iter = 3*10^3
+iter = 2*10^3
 chains = 2
 max_treedepth = 30
 
