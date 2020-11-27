@@ -505,11 +505,11 @@ transformed parameters {
 }
 model {
   mu ~ normal(0.0084, 0.01);
-  alpha0 ~ beta(1.1, 1.1);
-  beta1 ~ beta(1.1, 1.1);
-  gamma ~ beta(1.1, 1.1);
-  xi ~ normal(0, 1);
-  phi ~ normal(0, 1);
+  alpha0 ~ normal(0, 1);
+  beta1 ~ normal(0, 1);
+  gamma ~ normal(0, 1);
+  xi ~ normal(0, 2);
+  phi ~ normal(0, 2);
   tau_1 ~ normal(0, 1);
   tau_2 ~ normal(0, 1);
   sigma_rv ~ inv_gamma(10, 1);
@@ -957,7 +957,7 @@ step_size = 2 # in months
 n_steps = 1 # number of different time windows (to build different models)
 T_out <- 9 # forecast depth, days
 
-iter = 2*10^3
+iter = 3*10^3
 chains = 2
 max_treedepth = 30
 
