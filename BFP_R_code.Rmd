@@ -288,9 +288,9 @@ transformed parameters {
   mu[1] = mu_1;
 }
 model {
-  sigma ~ inv_gamma(.1, .1);
-  alpha ~ normal(0, 10);
-  beta ~ normal(0, 10);
+  sigma ~ inv_gamma(1, 2);
+  alpha ~ normal(0, 1);
+  beta ~ normal(0, 1);
   for (n in 2:T)
     y[n] ~ normal(mu[n], sigma);
 }
@@ -357,9 +357,9 @@ transformed parameters {
 }
 
 model {
-  mu ~ normal(0, 100);
-  alpha0 ~ normal(0, 100);
-  alpha1 ~ normal(0, 100);
+  mu ~ normal(0, 1);
+  alpha0 ~ normal(0, 1);
+  alpha1 ~ normal(0, 1);
   for (i in 2:T)
     y[i] ~ normal(mu, sigma[i]);
 }
@@ -505,14 +505,14 @@ transformed parameters {
 }
 model {
   mu ~ normal(0.0084, 0.01);
-  alpha0 ~ normal(0, 1);
-  beta1 ~ normal(0, 1);
-  gamma ~ normal(0, 1);
-  xi ~ normal(0, 2);
-  phi ~ normal(0, 2);
+  alpha0 ~ beta(1.1, 1.1);
+  beta1 ~ beta(1.1, 1.1);
+  gamma ~ beta(1.1, 1.1);
+  xi ~ normal(0, 1);
+  phi ~ normal(0, 1);
   tau_1 ~ normal(0, 1);
   tau_2 ~ normal(0, 1);
-  sigma_rv ~ normal(0.0001, 0.01);
+  sigma_rv ~ inv_gamma(10, 1);
   for (i in 1:T) {
     rv[i] ~ normal(mu_rv[i], sigma_rv);
   }
@@ -745,7 +745,7 @@ model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 2 # 
+n_steps = 9 # 
 T_out <- 9 # forecast depth, days
 
 iter =10^4
@@ -1036,7 +1036,11 @@ future work
 ```
 
 ```{r other indexes return}
-# to directly model SP500 return ~ rv, volume (not VIX as in the project)
+# do directly model SP500 return ~ rv, volume (not VIX as in the project)
+  # functions to change 
+    # quality of fit (now it compares with vix_9d)
+    # forecast_vix
+    # ...?
 # also try to model other indexes return
 ```
 
