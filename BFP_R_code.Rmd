@@ -255,7 +255,7 @@ SP_500_corr_df = SP_500_corr_df[SP_500_corr_df$date > "2012-01-01", ]
 
 ```{r SP_500/ VIX/ rv correlation}
 M<-cor(SP_500_corr_df[,-c(1)])
-corrplot(M)
+corrplot(M, type = "upper", tl.col = "steel blue")
 
 ```
 
@@ -465,11 +465,10 @@ functions {
       return (siigma * inv_Phi(u)) + muu;  // inverse cdf for value
     }     
 }
-
 data {
   int<lower=2> T; 
   vector[T] y;                  // return
-  vector<lower=0>[T] rv;        // it is x in HH2012 (realized volatility estimate)         
+  vector<lower=0>[T] rv;                 // it is x in HH2012 (realized volatility estimate)               
   real<lower=0> sigma_1;
   int<lower=0> T_out;
 }
@@ -482,6 +481,10 @@ parameters {
   real phi;
   real tau_1;
   real tau_2;
+  
+  //real<lower=0,upper=1-beta1-gamma> tau_1;
+  //real<lower=0,upper=1-beta1-gamma-tau_1> tau_2;
+  
   real<lower=0> sigma_rv;
   
 }
@@ -489,11 +492,9 @@ transformed parameters {
   vector<lower=0>[T] sigma;       // it is h in HH2012
   vector[T] z;
   vector[T] mu_rv;
-
   sigma[1] = sigma_1;
   z[1] = (y[1]-mu)/sigma[1];
   mu_rv[1] = xi + phi * pow(sigma[1], 2) + tau_1 * z[1] + tau_2 * (pow(z[1], 2) - 1);
-
   for (i in 2:T) {
     sigma[i] = sqrt(alpha0
                      + beta1 * pow(sigma[i-1], 2)
@@ -502,7 +503,6 @@ transformed parameters {
     mu_rv[i] = xi + phi * pow(sigma[i], 2) + tau_1 * z[i] + tau_2 * (pow(z[i], 2) - 1);
   }  
 }
-
 model {
   mu ~ normal(0.0084, 0.01);
   alpha0 ~ normal(0, 1);
@@ -512,13 +512,11 @@ model {
   phi ~ normal(0, 2);
   tau_1 ~ normal(0, 1);
   tau_2 ~ normal(0, 1);
-  sigma_rv ~ normal(0.001, 1);
-
+  sigma_rv ~ normal(0.0001, 0.01);
   for (i in 1:T) {
-    rv[i] ~ normal(mu_rv[i], sigma_rv) T[0,];
+    rv[i] ~ normal(mu_rv[i], sigma_rv);
   }
 }
-
 "
 #sso <- launch_shinystan(r_fit)
 ```
@@ -560,7 +558,6 @@ generated quantities {
   }
 }
 ```
-
 
 ```{r}
 generated quantities {
