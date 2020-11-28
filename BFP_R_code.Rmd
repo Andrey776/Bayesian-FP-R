@@ -357,9 +357,9 @@ transformed parameters {
 }
 
 model {
-  mu ~ normal(0, 1);
+  mu ~ normal(0.01, 0.2);
   alpha0 ~ normal(0, 1);
-  alpha1 ~ normal(0, 1);
+  alpha1 ~ beta(1.1, 1.1);
   for (i in 2:T)
     y[i] ~ normal(mu, sigma[i]);
 }
@@ -415,10 +415,10 @@ transformed parameters {
                      + beta1 * pow(sigma[i-1], 2));
 }
 model {
-  mu ~ normal(0, 100);
-  alpha0 ~ normal(0, 100);
-  alpha1 ~ normal(0, 100);
-  beta1 ~ normal(0, 100);
+  mu ~ normal(0.01, 0.2);
+  alpha0 ~ normal(0, 1);
+  alpha1 ~ beta(1.1, 1.1);
+  beta1 ~ beta(1.1, 1.1);
   for (i in 2:T)
     y[i] ~ normal(mu, sigma[i]);
 }
@@ -426,6 +426,7 @@ generated quantities {
   vector[T_out] r_out;
   vector[T_out] sigma_out;
   vector[T] log_lik;
+  vector[T] y_rep;
   
   sigma_out[1] = sqrt(alpha0
                      + alpha1 * pow(y[T] - mu, 2)
@@ -440,8 +441,9 @@ generated quantities {
   
   for (i in 1:T) {
     log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
+    y_rep[i] = normal_rng(mu, sigma[i]);
   }
-
+  
 }
 "
 
@@ -506,19 +508,61 @@ transformed parameters {
 model {
   mu ~ normal(0.0084, 0.01);
   alpha0 ~ normal(0, 1);
-  beta1 ~ normal(0, 1);
-  gamma ~ normal(0, 1);
-  xi ~ normal(0, 2);
-  phi ~ normal(0, 2);
-  tau_1 ~ normal(0, 1);
-  tau_2 ~ normal(0, 1);
+  beta1 ~ beta(1.01, 1.01);
+  gamma ~ beta(1.01, 1.01);
+  xi ~ normal(0, 1.1);
+  phi ~ normal(0, 1.5);
+  tau_1 ~ normal(0, 0.5);
+  tau_2 ~ normal(0, 0.5);
   sigma_rv ~ inv_gamma(10, 1);
   for (i in 1:T) {
     rv[i] ~ normal(mu_rv[i], sigma_rv);
   }
 }
+
+generated quantities {
+  vector[T] log_lik;
+  vector[T] y_rep;
+
+  
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
+    y_rep[i] = normal_rng(mu, sigma[i]);
+  }
+}
 "
 #sso <- launch_shinystan(r_fit)
+```
+
+```{r add after vector loglik and for loop }
+  vector[T_out] r_out;
+  vector<lower=0>[T_out] rv_out;
+  vector<lower=0>[T_out] sigma_out;
+  vector[T_out] z_out;
+  vector[T_out] mu_rv_out;
+  
+  sigma_out[1] = sqrt(alpha0
+                     + beta1 * pow(sigma[T], 2)
+                     + gamma * rv[T]);                   
+  r_out[1] = normal_lb_rng(mu, sigma_out[1], 0); 
+  z_out[1] = (r_out[1] - mu) / sigma_out[1];
+  
+  mu_rv_out[1] = xi + phi * pow(sigma_out[1], 2) 
+                    + tau_1 * z_out[1] 
+                    + tau_2 * (pow(z_out[1], 2) - 1);
+  rv_out[1] = normal_lb_rng(mu_rv_out[1], sigma_rv, 0);
+
+  for (i in 2:T_out) {
+    sigma_out[i] = sqrt(alpha0
+                     + beta1 * pow(sigma_out[i-1], 2)
+                     + gamma * rv_out[i-1]);                  
+    r_out[i] = normal_lb_rng(mu, sigma_out[i], 0); 
+    z_out[i] = (r_out[i] - mu)/sigma_out[i];
+    mu_rv_out[i] = xi + phi * pow(sigma_out[i], 2) 
+                      + tau_1 * z_out[i] 
+                      + tau_2 * (pow(z_out[i], 2) - 1);
+    rv_out[i] = normal_lb_rng(mu_rv_out[i], sigma_rv, 0); 
+  }
 ```
 
 ```{r}
@@ -722,7 +766,7 @@ forecast_vix = function (model_code, start_date, subset_duration,
                  iter = iter, chains = chains,
                  control = list(max_treedepth = max_treedepth))
     
-    setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
+    setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/output')
     #temp_1 = readRDS("AR1 2020-11-23 for 2017-01-22 2017-07-22 .rda")
     saveRDS(r_fit, file = file_name, compress = "xz")
     
@@ -829,7 +873,7 @@ f = forecast_vix(model_code = model_code, start_date = start_date,
                     subset_duration = subset_duration, 
                     step_size = step_size,n_steps = n_steps, T_out = T_out, 
                     sigma_1 = sigma_1, mu_1 = mu_1, iter = iter, chains = chains, 
-                 Rbsq_presence = FALSE) 
+                 Rbsq_presence = FALSE, max_treedepth = max_treedepth) 
 p_col_namses = c("window_start", "window_end",
                  "mu", "mu_2.5", "mu_97.5",
                  "alpha0", "alpha0_2.5", "alpha0_97.5",
@@ -839,7 +883,7 @@ p_col_namses = c("window_start", "window_end",
                  "MAE_ind", "MAPE_ind", "MSE_ind")
 p = data.frame(matrix(vector(), n_steps + 5, length(p_col_namses), 
                          dimnames = list(c(),p_col_namses)),
-               stringsAsFactors=F, max_treedepth = max_treedepth)
+               stringsAsFactors=F)
 
 for (i in 1:n_steps){
   p[i, "window_start"] = as.character(as.Date(names(f)[i]) - months(subset_duration))
@@ -883,12 +927,12 @@ model_name = "GARCH11"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 1 # number of different time windows (to build different models)
+n_steps = 2 # number of different time windows (to build different models)
 T_out <- 9 # forecast depth, days
 
 iter = 10^4
 chains = 4
-max_treedepth = 10
+max_treedepth = 12
 
 sigma_1 <- 0.1 
 mu_1 = 0
@@ -951,17 +995,17 @@ write.xlsx(p,
 
 model_code = stan_mod_RealGARCH11
 model_name = "RealGARCH11"
-start_date = "2017-01-22"
+start_date = "2017-05-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
 n_steps = 1 # number of different time windows (to build different models)
 T_out <- 9 # forecast depth, days
 
-iter = 3*10^3
-chains = 2
-max_treedepth = 30
+iter = 10^4
+chains = 3
+max_treedepth = 35
 
-sigma_1 <- 0.2 # sqrt(var(lin_vix_ret)) > sqrt(var(rv_vix_subset$vix_lin_ret[-c(1)]))
+sigma_1 <- 0.1 # sqrt(var(lin_vix_ret)) > sqrt(var(rv_vix_subset$vix_lin_ret[-c(1)]))
 mu_1 = 0
 
 f = forecast_vix(model_code = model_code, start_date = start_date, 
@@ -1025,6 +1069,27 @@ write.xlsx(p,
            paste(model_name, as.character(Sys.time()), ".xlsx", sep="_"),
            sheetName=model_name)
 ```
+
+```{r prediction of absolute numbers}
+start_date = "2017-01-22"
+subset_duration = 18 # in months, incl 1 extra month for T_out (validation)
+step_size = 2 # in months
+n_steps = 1
+t_0 = as.Date(start_date)
+t_1 = as.Date(t_0) + months(subset_duration) #stored end_date, for subset
+subset = build_vix9_rv_subset(t_0, t_1)
+
+#subset$vix_9d_out = NA
+temp = data_frame()
+for (i in 1:9) {
+  temp = rbind(temp, f_GARCH[[i]]$returns[,c("date", "price_r_out")])
+}
+subset = left_join(subset, temp, by = "date")
+names(subset)[6] = "vix_9d_predicted"
+names(subset)[3] = "vix_9d_true"
+
+```
+
 
 future work
 ```{r ##to_do## parameters' stability check}
