@@ -99,6 +99,41 @@ rv = realized[realized$Symbol==".SPX",]
 
 ```
 
+```{r plot data violins}
+
+temp_long = melt(vix_df, id="date")
+ggplot(temp_long, aes(y = value, x = variable)) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+                         outlier.shape=3, color="steel blue", outlier.size=1) + 
+    ylim(0,60) + 
+  theme_ipsum() +
+  ylab("VIX distribution")
+summary(temp_long$value)
+rm(temp_long)
+
+temp_long = rv_vix_subset[, c("date", "vix_lin_ret")]
+ggplot(temp_long, aes(y = vix_lin_ret, x = "return")) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+               outlier.shape=3, color="steel blue", outlier.size=1) + 
+  ylim(-.7, 1) + 
+  theme_ipsum() +
+  ylab("return distribution")
+rm(temp_long)
+
+temp_long = rv_vix_subset[, c("date", "rv5")]
+ggplot(temp_long, aes(y = rv5, x = "realized volatility")) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+               outlier.shape=3, color="steel blue", outlier.size=1) + 
+  ylim(0, 0.0004) + 
+  theme_ipsum() +
+  ylab("realized volatility")
+summary(temp_long$rv5)
+rm(temp_long)
+```
+
 ```{r #+#FUNCTION return }
 ##+++## add a normal return finction
 
@@ -565,78 +600,16 @@ generated quantities {
   }
 ```
 
-```{r}
-generated quantities {
-  vector[T_out] r_out;
-  vector<lower=0>[T_out] rv_out;
-  vector<lower=0>[T_out] sigma_out;
-  vector[T_out] z_out;
-  vector[T_out] mu_rv_out;
-  vector[T] log_lik;
-  
-  sigma_out[1] = sqrt(alpha0
-                     + beta1 * pow(sigma[T], 2)
-                     + gamma * rv[T]);                   
-  r_out[1] = normal_rng(mu, sigma_out[1]); 
-  z_out[1] = (r_out[1]-mu)/sigma_out[1];
-  
-  mu_rv_out[1] = xi + phi * pow(sigma_out[1], 2) + tau_1 * z_out[1] + tau_2 * (pow(z_out[1], 2) - 1);
-  rv_out[1] = normal_lb_rng(mu_rv_out[1], sigma_rv, 0);
-
-  for (i in 2:T_out) {
-    sigma_out[i] = sqrt(alpha0
-                     + beta1 * pow(sigma_out[i-1], 2)
-                     + gamma * rv_out[i-1]);                  
-    r_out[i] = normal_rng(mu, sigma_out[i]); 
-      // predict both return (r_out or y) and realized volatility estimate (rv_out)
-
-    z_out[i] = (r_out[i]-mu)/sigma_out[i];
-    mu_rv_out[i] = xi + phi * pow(sigma_out[i], 2) + tau_1 * z_out[i] + tau_2 * (pow(z_out[i], 2) - 1);
-  
-    rv_out[i] = normal_lb_rng(mu_rv_out[i], sigma_rv, 0); 
-      // predict realized volatility estimate (rv_out)
-  }
-  
-  for (i in 1:T) {
-    log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
-  }
-}
-```
-
-```{r}
-generated quantities {
-  vector[T_out] r_out;
-  vector[T_out] sigma_out;
-  vector[T] log_lik;
-  
-  sigma_out[1] = sqrt(alpha0
-                     + alpha1 * pow(y[T] - mu, 2)
-                     + beta1 * pow(sigma[T], 2));
-  r_out[1] = normal_rng(mu, sigma_out[1]);
-  for (i in 2:T_out) {
-    sigma_out[i] = sqrt(alpha0
-                     + alpha1 * pow(r_out[i-1] - mu, 2)
-                     + beta1 * pow(sigma_out[i-1], 2));
-    r_out[i] = normal_rng(mu, sigma_out[i]);
-  }
-  
-  for (i in 1:T) {
-    log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
-  }
-
-}
-```
-
-```{r #+# plots sd_9/30d_lead9/30d ~ vix9/30}
+```{r #+# plots sd_9/30d_lead9/30d ~ vix9/30 two y axis}
 ##to_do### to analyze possible dependence of the current rv and future vix values
 # basically this is exactly what the model does
 
 
-subset = SP_500_corr_df[((SP_500_corr_df$date>"2019-01-30") & (SP_500_corr_df$date<"2019-08-30")),
+subset_plot = SP_500_corr_df[((SP_500_corr_df$date>"2019-01-30") & (SP_500_corr_df$date<"2019-08-30")),
                         c("date", "vix_9d", "vix_30d", "sd_9d","sd_9d_lead_9d", "sd_30d_lead_9d")] 
 
-coeff = 4*max(subset$vix_9d)/ max(subset$sd_9d)
-ggplot(subset, aes(date)) + 
+coeff = 4*max(subset_plot$vix_9d)/ max(subset_plot$sd_9d)
+ggplot(subset_plot, aes(date)) + 
   geom_line(aes(y = vix_9d, colour = "VIX_9d"), alpha = .6) + 
   geom_line(aes(y = sd_9d_lead_9d / coeff, colour = "sd_9d_lead_9d"), alpha = .3) +
   geom_line(aes(y = sd_9d/ coeff, colour = "sd_9d"), alpha = .6) +
@@ -652,7 +625,7 @@ ggplot(subset, aes(date)) +
     axis.title.y.right = element_text(color = "red", size=12)) +
   ggtitle("some inference") 
 
-remove(subset)
+remove(subset_plot)
 ### take-aways
 # vix seems to be not forecasting/ leading even a point estimate of future RV
 # but instead current SD and RV seems to be forecasting vix
@@ -722,15 +695,6 @@ quality_of_fit = function(fit, T_out, end_date, subset, subset_long, Rbsq_presen
   return(qf)
 
 }
-
-# Check the ACF of draws
-#stan_ac(r_fit, c("omega", "beta", "gamma"))
-
-#summary(r_fit)$summary[,c("mean", "2.5%", "97.5%")][c("omega", "beta", "gamma", 
-#                                                      "xi", "phi", "tau_1", 
-#                                                      "tau_2", "sigma_u",
-#                                                      "h[10]", "h[20]", "h[100]",
-#                                                      "r_out[1]", "r_out[4]"),]  
 
 ```
 
@@ -1070,7 +1034,7 @@ write.xlsx(p,
            sheetName=model_name)
 ```
 
-```{r prediction of absolute numbers}
+```{r prediction of absolute numbers, include=FALSE}
 start_date = "2017-01-22"
 subset_duration = 18 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
@@ -1084,10 +1048,21 @@ temp = data_frame()
 for (i in 1:9) {
   temp = rbind(temp, f_GARCH[[i]]$returns[,c("date", "price_r_out")])
 }
-subset = left_join(subset, temp, by = "date")
-names(subset)[6] = "vix_9d_predicted"
-names(subset)[3] = "vix_9d_true"
+subset = left_join(subset, temp, by = "date")[,c(1,3,6)]
+names(subset)[3] = "vix_9d_predicted"
+names(subset)[2] = "vix_9d_true"
 
+
+rv_long <- melt(subset, id="date")
+ggplot(data=rv_long, aes(x=date, y=value, colour=variable)) + 
+  geom_line(alpha=.9) +
+  theme_ipsum() +
+  geom_vline(xintercept = as.Date(c("2017-07-22", "2017-09-22", "2017-11-22", "2018-01-22", "2018-03-22", "2018-05-22")), 
+             show.legend = T, colour = "steel blue", linetype="dotted") +
+#ylim(0,0.0007) +
+  scale_x_date(limit=c(as.Date("2017-07-15"),as.Date("2018-06-20"))) + 
+  theme(legend.position="bottom")
+remove(rv_long)
 ```
 
 
@@ -1320,3 +1295,42 @@ model {
 
 #sso <- launch_shinystan(r_fit)
 ```
+
+```{r Real GARCH forecast}
+generated quantities {
+  vector[T_out] r_out;
+  vector<lower=0>[T_out] rv_out;
+  vector<lower=0>[T_out] sigma_out;
+  vector[T_out] z_out;
+  vector[T_out] mu_rv_out;
+  vector[T] log_lik;
+  
+  sigma_out[1] = sqrt(alpha0
+                     + beta1 * pow(sigma[T], 2)
+                     + gamma * rv[T]);                   
+  r_out[1] = normal_rng(mu, sigma_out[1]); 
+  z_out[1] = (r_out[1]-mu)/sigma_out[1];
+  
+  mu_rv_out[1] = xi + phi * pow(sigma_out[1], 2) + tau_1 * z_out[1] + tau_2 * (pow(z_out[1], 2) - 1);
+  rv_out[1] = normal_lb_rng(mu_rv_out[1], sigma_rv, 0);
+
+  for (i in 2:T_out) {
+    sigma_out[i] = sqrt(alpha0
+                     + beta1 * pow(sigma_out[i-1], 2)
+                     + gamma * rv_out[i-1]);                  
+    r_out[i] = normal_rng(mu, sigma_out[i]); 
+      // predict both return (r_out or y) and realized volatility estimate (rv_out)
+
+    z_out[i] = (r_out[i]-mu)/sigma_out[i];
+    mu_rv_out[i] = xi + phi * pow(sigma_out[i], 2) + tau_1 * z_out[i] + tau_2 * (pow(z_out[i], 2) - 1);
+  
+    rv_out[i] = normal_lb_rng(mu_rv_out[i], sigma_rv, 0); 
+      // predict realized volatility estimate (rv_out)
+  }
+  
+  for (i in 1:T) {
+    log_lik[i] = normal_lpdf(y[i] | mu, sigma[i]);
+  }
+}
+```
+

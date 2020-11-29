@@ -1,7 +1,7 @@
 library(shinystan)
 
 setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/output')
-temp = readRDS("RealGARCH11 2020-11-28 for 2017-05-22 2017-11-22 .rda")
+temp = readRDS("ARCH1 2020-11-28 for 2017-01-22 2017-07-22 .rda")
 sso <- launch_shinystan(temp)
 
 log_lik = extract_log_lik(temp, merge_chains = FALSE)
@@ -21,3 +21,6 @@ subset_long = build_vix9_rv_subset(t_0, t_1)
 t_1 = as.Date(t_0) + months(subset_duration) #stored end_date, for subset
 subset = build_vix9_rv_subset(t_0, t_1)
 y = subset$vix_lin_ret 
+
+temp_name = gsub(" ", "", paste("r_out[", as.character(i),"]", ""))
+r_out=extract(temp, pars=temp_name)[[1]]
