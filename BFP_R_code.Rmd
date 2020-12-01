@@ -132,6 +132,19 @@ ggplot(temp_long, aes(y = rv5, x = "realized volatility")) +
   ylab("realized volatility")
 summary(temp_long$rv5)
 rm(temp_long)
+
+temp = SP_500_corr_df[,c("date","sd_9d","sd_30d", "sd_3m", "sd_6m")]
+names(temp) = c("date","S&P-500 SD_9d","S&P-500 SD_30d", "S&P-500 SD_3m", "S&P-500 SD_6m")
+temp_long = melt(temp, id="date")
+ggplot(temp_long, aes(y = value, x = variable)) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+                         outlier.shape=3, color="steel blue", outlier.size=1) + 
+    ylim(0,150) + 
+  theme_ipsum() +
+  ylab("S&P500 SD distribution")
+summary(temp_long$value)
+rm(temp, temp_long)
 ```
 
 ```{r #+#FUNCTION return }
@@ -753,7 +766,7 @@ model_name = "AR1"
 start_date = "2017-01-22"
 subset_duration = 6 # in months, incl 1 extra month for T_out (validation)
 step_size = 2 # in months
-n_steps = 9 # 
+n_steps = 9 # changed from 10 for output
 T_out <- 9 # forecast depth, days
 
 iter =10^4
