@@ -1,6 +1,7 @@
 library(shinystan)
 
-setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/output')
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/data')
+SP_500_1 = fread("SANDP-500_201006_201204.csv")
 temp = readRDS("RealGARCH11 2020-11-28 for 2017-05-22 2017-11-22 .rda")
 sso <- launch_shinystan(temp)
 
