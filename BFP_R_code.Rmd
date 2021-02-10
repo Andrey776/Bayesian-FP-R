@@ -20,6 +20,7 @@ library(corrplot)
 devtools::install_github("stan-dev/loo")
 library(loo)
 library(xlsx)
+library(coda)
 
 #library(reshape2)
 #launch_shinystan_demo()
@@ -97,54 +98,6 @@ rv = realized[realized$Symbol==".SPX",]
 #from = "2015-01-01", to = "2020-11-12", auto.assign = FALSE
 #)
 
-```
-
-```{r plot data violins}
-
-temp_long = melt(vix_df, id="date")
-ggplot(temp_long, aes(y = value, x = variable)) + 
-  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
-            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
-                         outlier.shape=3, color="steel blue", outlier.size=1) + 
-    ylim(0,60) + 
-  theme_ipsum() +
-  ylab("VIX distribution")
-summary(temp_long$value)
-rm(temp_long)
-
-temp_long = rv_vix_subset[, c("date", "vix_lin_ret")]
-ggplot(temp_long, aes(y = vix_lin_ret, x = "return")) + 
-  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
-  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
-               outlier.shape=3, color="steel blue", outlier.size=1) + 
-  ylim(-.7, 1) + 
-  theme_ipsum() +
-  ylab("return distribution")
-rm(temp_long)
-
-temp_long = rv_vix_subset[, c("date", "rv5")]
-ggplot(temp_long, aes(y = rv5, x = "realized volatility")) + 
-  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
-  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
-               outlier.shape=3, color="steel blue", outlier.size=1) + 
-  ylim(0, 0.0004) + 
-  theme_ipsum() +
-  ylab("realized volatility")
-summary(temp_long$rv5)
-rm(temp_long)
-
-temp = SP_500_corr_df[,c("date","sd_9d","sd_30d", "sd_3m", "sd_6m")]
-names(temp) = c("date","S&P-500 SD_9d","S&P-500 SD_30d", "S&P-500 SD_3m", "S&P-500 SD_6m")
-temp_long = melt(temp, id="date")
-ggplot(temp_long, aes(y = value, x = variable)) + 
-  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
-            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
-                         outlier.shape=3, color="steel blue", outlier.size=1) + 
-    ylim(0,150) + 
-  theme_ipsum() +
-  ylab("S&P500 SD distribution")
-summary(temp_long$value)
-rm(temp, temp_long)
 ```
 
 ```{r #+#FUNCTION return }
@@ -305,6 +258,54 @@ SP_500_corr_df = SP_500_corr_df[SP_500_corr_df$date > "2012-01-01", ]
 M<-cor(SP_500_corr_df[,-c(1)])
 corrplot(M, type = "upper", tl.col = "steel blue")
 
+```
+
+```{r plot data violins}
+
+temp_long = melt(vix_df, id="date")
+ggplot(temp_long, aes(y = value, x = variable)) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+                         outlier.shape=3, color="steel blue", outlier.size=1) + 
+    ylim(0,60) + 
+  theme_ipsum() +
+  ylab("VIX distribution")
+summary(temp_long$value)
+rm(temp_long)
+
+temp_long = rv_vix_subset[, c("date", "vix_lin_ret")]
+ggplot(temp_long, aes(y = vix_lin_ret, x = "return")) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+               outlier.shape=3, color="steel blue", outlier.size=1) + 
+  ylim(-.7, 1) + 
+  theme_ipsum() +
+  ylab("return distribution")
+rm(temp_long)
+
+temp_long = rv_vix_subset[, c("date", "rv5")]
+ggplot(temp_long, aes(y = rv5, x = "realized volatility")) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+  geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+               outlier.shape=3, color="steel blue", outlier.size=1) + 
+  ylim(0, 0.0004) + 
+  theme_ipsum() +
+  ylab("realized volatility")
+summary(temp_long$rv5)
+rm(temp_long)
+
+temp = SP_500_corr_df[,c("date","sd_9d","sd_30d", "sd_3m", "sd_6m")]
+names(temp) = c("date","S&P-500 SD_9d","S&P-500 SD_30d", "S&P-500 SD_3m", "S&P-500 SD_6m")
+temp_long = melt(temp, id="date")
+ggplot(temp_long, aes(y = value, x = variable)) + 
+  geom_violin(trim = F, show.legend = F, fill = "steel blue", alpha = .1) + 
+            geom_boxplot(width=0.21, fill="steel blue", outlier.color="steel blue", alpha = .5,
+                         outlier.shape=3, color="steel blue", outlier.size=1) + 
+    ylim(0,150) + 
+  theme_ipsum() +
+  ylab("S&P500 SD distribution")
+summary(temp_long$value)
+rm(temp, temp_long)
 ```
 
 ```{r #-# STAN model AR(1), include=FALSE}
@@ -613,39 +614,6 @@ generated quantities {
   }
 ```
 
-```{r #+# plots sd_9/30d_lead9/30d ~ vix9/30 two y axis}
-##to_do### to analyze possible dependence of the current rv and future vix values
-# basically this is exactly what the model does
-
-
-subset_plot = SP_500_corr_df[((SP_500_corr_df$date>"2019-01-30") & (SP_500_corr_df$date<"2019-08-30")),
-                        c("date", "vix_9d", "vix_30d", "sd_9d","sd_9d_lead_9d", "sd_30d_lead_9d")] 
-
-coeff = 4*max(subset_plot$vix_9d)/ max(subset_plot$sd_9d)
-ggplot(subset_plot, aes(date)) + 
-  geom_line(aes(y = vix_9d, colour = "VIX_9d"), alpha = .6) + 
-  geom_line(aes(y = sd_9d_lead_9d / coeff, colour = "sd_9d_lead_9d"), alpha = .3) +
-  geom_line(aes(y = sd_9d/ coeff, colour = "sd_9d"), alpha = .6) +
-  
-  scale_y_continuous(
-    # Features of the first axis
-    name = "VIX_9d",
-    # Add a second axis and specify its features
-    sec.axis = sec_axis(~.*coeff, name="SD")) + 
-  theme_ipsum() +
-  theme(
-    axis.title.y = element_text(color = "blue", size=12),
-    axis.title.y.right = element_text(color = "red", size=12)) +
-  ggtitle("some inference") 
-
-remove(subset_plot)
-### take-aways
-# vix seems to be not forecasting/ leading even a point estimate of future RV
-# but instead current SD and RV seems to be forecasting vix
-
-
-```
-
 ```{r FUNCTION build_vix9_rv_subset}
 build_vix9_rv_subset = function(start_date, end_date) { ### end_date including 1 extra month for T_out ###
   rv_vix = left_join(rv[,c("date", "rv5")], vix_df[,c("date", "vix_9d")], by = "date")
@@ -755,7 +723,7 @@ forecast_vix = function (model_code, start_date, subset_duration,
   return(qf_list)
 }  
 #sso <- launch_shinystan(r_fit)
-
+#summary(r_fit)
 ```
 
 ```{r chain of forecasts AR1, include=FALSE}
@@ -1076,6 +1044,53 @@ ggplot(data=rv_long, aes(x=date, y=value, colour=variable)) +
   scale_x_date(limit=c(as.Date("2017-07-15"),as.Date("2018-06-20"))) + 
   theme(legend.position="bottom")
 remove(rv_long)
+```
+
+```{r gelman.diag geweke.diag}
+
+library(coda)
+library(DrBats)
+
+setwd('/Users/AM/Documents/_CU Masters/2020 fall Bayesian_7393/Final_Project/output')
+temp_fit = readRDS("GARCH11 2020-11-27 for 2018-01-22 2018-07-22 .rda")
+coda_fit <- coda.obj(temp_fit)
+mc = mcmc.list(coda_fit)
+
+geweke.diag(mc)
+```
+
+
+```{r #+# plots sd_9/30d_lead9/30d ~ vix9/30 two y axis}
+##to_do### to analyze possible dependence of the current rv and future vix values
+# basically this is exactly what the model does
+
+
+subset_plot = SP_500_corr_df[((SP_500_corr_df$date>"2019-01-30") & (SP_500_corr_df$date<"2019-08-30")),
+                        c("date", "vix_9d", "vix_30d", "sd_9d","sd_9d_lead_9d", "sd_30d_lead_9d")] 
+
+coeff = 4*max(subset_plot$vix_9d)/ max(subset_plot$sd_9d)
+ggplot(subset_plot, aes(date)) + 
+  geom_line(aes(y = vix_9d, colour = "VIX_9d"), alpha = .6) + 
+  geom_line(aes(y = sd_9d_lead_9d / coeff, colour = "sd_9d_lead_9d"), alpha = .3) +
+  geom_line(aes(y = sd_9d/ coeff, colour = "sd_9d"), alpha = .6) +
+  
+  scale_y_continuous(
+    # Features of the first axis
+    name = "VIX_9d",
+    # Add a second axis and specify its features
+    sec.axis = sec_axis(~.*coeff, name="SD")) + 
+  theme_ipsum() +
+  theme(
+    axis.title.y = element_text(color = "blue", size=12),
+    axis.title.y.right = element_text(color = "red", size=12)) +
+  ggtitle("some inference") 
+
+remove(subset_plot)
+### take-aways
+# vix seems to be not forecasting/ leading even a point estimate of future RV
+# but instead current SD and RV seems to be forecasting vix
+
+
 ```
 
 
